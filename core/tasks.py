@@ -38,6 +38,8 @@ def preprocessJsonObject(o):
 		return {preprocessJsonObject(k): preprocessJsonObject(v) for k, v in o.items()}
 	elif isinstance(o, (list, tuple, set)):
 		return [preprocessJsonObject(x) for x in o]
+	elif isinstance(o,pytz.BaseTzInfo):
+		return str(o)
 	else:
 		return o
 
@@ -477,6 +479,9 @@ def callDeferred(func):
 					   and callable(conf["viur.tasks.customEnvironmentHandler"][0]), \
 					"Your customEnvironmentHandler must be a tuple of two callable if set!"
 				env["custom"] = conf["viur.tasks.customEnvironmentHandler"][0]()
+			##TEST
+			logging.debug(kwargs)
+			logging.debug(preprocessJsonObject((command, (funcPath, args, kwargs, env))))
 			pickled = json.dumps(preprocessJsonObject((command, (funcPath, args, kwargs, env)))).encode("UTF-8")
 			project = utils.projectID
 			location = queueRegion
