@@ -493,14 +493,14 @@ class Tree(BasicApplication):
 		if not securitykey.validate(skey, useSessionKey=True):
 			raise errors.PreconditionFailed()
 		if skelType == "node":
-			self.deleteRecursive(skel["key"])
+			self.deleteRecursive("node", skel["key"])
 		self.onDelete(skelType, skel)
 		skel.delete()
 		self.onDeleted(skelType, skel)
 		return self.render.deleteSuccess(skel, skelType=skelType)
 
 	@callDeferred
-	def deleteRecursive(self, nodeKey):
+	def deleteRecursive(self, skelType, parentKey, cursor=None):
 		"""
 		Recursively processes a delete request.
 
@@ -509,20 +509,26 @@ class Tree(BasicApplication):
 		:param key: URL-safe key of the node which children should be deleted.
 		:type key: str
 		"""
-		nodeKey = db.keyHelper(nodeKey, self.viewSkel("node").kindName)
-		if self.leafSkelCls:
-			for f in db.Query(self.viewSkel("leaf").kindName).filter("parententry =", nodeKey).iter(
-				keysOnly=True):
-				s = self.viewSkel("leaf")
-				if not s.fromDB(f):
-					continue
-				s.delete()
-		for d in db.Query(self.viewSkel("node").kindName).filter("parententry =", nodeKey).iter(keysOnly=True):
-			self.deleteRecursive(str(d))
-			s = self.viewSkel("node")
-			if not s.fromDB(d):
-				continue
-			s.delete()
+		if not (skelType := self._checkSkelType(skelType)):
+			raise ValueError("Unsupported skelType")
+
+		nodeKey = db.keyHelper(parentKey, self.viewSkel("node").kindName)
+
+		q = self.baseSkel(skelType).all()
+		q.filter("parententry =", nodeKey)
+		q.setCursor(cursor)
+
+		for skel in q.fetch(limit=99):
+			if skelType == "node":
+				self.deleteRecursive("node", skel["key"])
+
+				if self.leafSkelCls:
+					self.deleteRecursive("leaf", skel["key"])
+
+			skel.delete()
+
+		if cursor := q.getCursor():
+			self.deleteRecursive(skelType, parentKey, cursor)
 
 	@exposed
 	@forceSSL
