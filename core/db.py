@@ -894,7 +894,7 @@ class Query(object):
 		res.getCursor = lambda: self.getCursor()
 		return res
 
-	def iter(self, keysOnly=False):
+	def iter(self):
 		"""
 			Run this query and return an iterator for the results.
 
@@ -909,9 +909,6 @@ class Query(object):
 			:warning: If iterating over a large result set, make sure the query supports cursors. \
 			Otherwise, it might not return all results as the AppEngine doesn't maintain the view \
 			for a query for more than ~30 seconds.
-
-			:param keysOnly: If the query should be used to retrieve entity keys only.
-			:type keysOnly: bool
 		"""
 		if self.queries is None:  # Noting to pull here
 			raise StopIteration()
@@ -954,13 +951,9 @@ class Query(object):
 		self.srcSkel.setEntity(res)
 		return self.srcSkel
 
-	def clone(self, keysOnly=None) -> Query:
+	def clone(self) -> Query:
 		"""
 			Returns a deep copy of the current query.
-
-			:param keysOnly: If the query should be used to retrieve entity keys only\
-			in the new query.
-			:type keysOnly: bool
 
 			:returns: The cloned query.
 			:rtype: server.db.Query
