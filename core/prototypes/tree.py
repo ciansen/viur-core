@@ -552,8 +552,8 @@ class Tree(BasicApplication):
 		if not (skelType := self._checkSkelType(skelType)):
 			raise errors.NotAcceptable(f"Invalid skelType provided.")
 
-		skel = self.addSkel(skelType)  # srcSkel - the skeleton to be moved
-		parentNodeSkel = self.editSkel("node")  # destSkel - the node it should be moved into
+		skel = self.editSkel(skelType)  # srcSkel - the skeleton to be moved
+		parentNodeSkel = self.baseSkel("node")  # destSkel - the node it should be moved into
 
 		if not skel.fromDB(key) or not parentNodeSkel.fromDB(parentNode):
 			# Could not find one of the entities
@@ -563,8 +563,7 @@ class Tree(BasicApplication):
 			raise errors.Unauthorized()
 
 		if skel["key"] == parentNodeSkel["key"]:
-			# Cannot move a node into itself
-			raise errors.NotAcceptable()
+			raise errors.NotAcceptable("Cannot move a node into itself")
 
 		## Test for recursion
 		currLevel = db.Get(parentNodeSkel["key"])
@@ -576,13 +575,12 @@ class Tree(BasicApplication):
 				break
 			currLevel = db.Get(currLevel["parententry"])
 		else:  # We did not "break" - recursion-level exceeded or loop detected
-			raise errors.NotAcceptable()
+			raise errors.NotAcceptable("Unable to find a root node in recursion?")
 
 		# Test if we try to move a rootNode
 		tmp = skel.dbEntity
 		if "rootNode" in tmp and tmp["rootNode"] == 1:
-			# Cant move a rootNode away..
-			raise errors.NotAcceptable()
+			raise errors.NotAcceptable("Can't move a rootNode to somewhere else")
 
 		if not securitykey.validate(kwargs.get("skey", ""), useSessionKey=True):
 			raise errors.PreconditionFailed()
@@ -595,13 +593,16 @@ class Tree(BasicApplication):
 				skel["sortindex"] = float(kwargs["sortindex"])
 			except:
 				raise errors.PreconditionFailed()
+
+		self.onEdit(skelType, skel)
 		skel.toDB()
+		self.onEdited(skelType, skel)
 
 		# Ensure a changed parentRepo get's proagated
 		if currentParentRepo != parentNodeSkel["parentrepo"]:
 			self.updateParentRepo(key, parentNodeSkel["parentrepo"])
-		return self.render.editSuccess(
-			skel)  # new Sig, has no args and kwargs , skelType = skelType, action = "move", destNode = parentNodeSkel )
+
+		return self.render.editSuccess(skel)
 
 	## Default access control functions
 
@@ -731,7 +732,7 @@ class Tree(BasicApplication):
 			return True
 		return False
 
-	def canMove(self, skelType: str, node: str, destNode: str) -> bool:
+	def canMove(self, skelType: str, node: SkeletonInstance, destNode: SkeletonInstance) -> bool:
 		"""
 		Access control function for moving permission.
 
