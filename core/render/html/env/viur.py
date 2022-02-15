@@ -92,6 +92,11 @@ def execRequest(render, path, *args, **kwargs):
 		currReq.internalRequest = lastRequestState
 		return (u"%s not callable or not exposed" % str(caller))
 	try:
+		# Don't pull style-parameter thru
+		if "style" in kwargs:
+			kwargs = kwargs.copy()
+			del kwargs["style"]
+
 		resstr = caller(*args, **kwargs)
 	except Exception as e:
 		logging.error("Caught execption in execRequest while calling %s" % path)
