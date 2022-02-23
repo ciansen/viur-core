@@ -12,3 +12,6 @@ KeyClass = Key
 __all__ = [KEY_SPECIAL_PROPERTY, DATASTORE_BASE_TYPES, SortOrder, Entity, Key, KeyClass, Put, Get, Delete, AllocateIDs,
 		   Collision, keyHelper, fixUnindexableProperties, GetOrInsert, Query, QueryDefinition, IsInTransaction,
 		   acquireTransactionSuccessMarker, RunInTransaction]
+
+
+Query.mergeFilter = Query.mergeExternalFilter  # cure needs this!
