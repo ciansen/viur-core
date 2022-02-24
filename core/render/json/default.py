@@ -1,22 +1,7 @@
-# -*- coding: utf-8 -*-
-import json
 from collections import OrderedDict
-from viur.core import bones, utils, db
+from viur.core import db, bones, utils, json
 from viur.core.skeleton import SkeletonInstance
 from viur.core.utils import currentRequest
-from viur.core.i18n import translate
-from typing import Any
-
-
-class CustomJsonEncoder(json.JSONEncoder):
-	"""
-		This custom JSON-Encoder for this json-render ensures that translations are evaluated and can be dumped.
-	"""
-
-	def default(self, o: Any) -> Any:
-		if isinstance(o, translate):
-			return str(o)
-		return json.JSONEncoder.default(self, o)
 
 
 class DefaultRender(object):
@@ -50,6 +35,7 @@ class DefaultRender(object):
 			"readonly": bone.readOnly,
 			"unique": bone.unique.method.value if bone.unique else False,
 			"languages": bone.languages,
+			"emptyValue": bone.getEmptyValue()
 		}
 		if bone.multiple and isinstance(bone.multiple, bones.MultipleConstraints):
 			ret["multiple"] = {
@@ -136,10 +122,7 @@ class DefaultRender(object):
 		:return: A dict containing the rendered attributes.
 		:rtype: dict
 		"""
-		if bone.type == "date" or bone.type.startswith("date."):
-			if value:
-				return value.isoformat()
-		elif isinstance(bone, bones.relationalBone):
+		if isinstance(bone, bones.relationalBone):
 			if isinstance(value, dict):
 				return {
 					"dest": self.renderSkelValues(value["dest"], injectDownloadURL=isinstance(bone, bones.fileBone)),
@@ -150,8 +133,6 @@ class DefaultRender(object):
 			return self.renderSkelValues(value)
 		elif isinstance(bone, bones.passwordBone):
 			return ""
-		elif isinstance(bone, bones.keyBone):
-			return db.encodeKey(value) if value else None
 		else:
 			return value
 		return None
@@ -222,7 +203,7 @@ class DefaultRender(object):
 			"params": params
 		}
 		currentRequest.get().response.headers["Content-Type"] = "application/json"
-		return json.dumps(res, cls=CustomJsonEncoder)
+		return json.dumps(res)
 
 	def view(self, skel, action="view", params=None, *args, **kwargs):
 		return self.renderEntry(skel, action, params)
@@ -251,7 +232,7 @@ class DefaultRender(object):
 		res["action"] = action
 		res["params"] = params
 		currentRequest.get().response.headers["Content-Type"] = "application/json"
-		return json.dumps(res, cls=CustomJsonEncoder)
+		return json.dumps(res)
 
 	def editSuccess(self, skel, params=None, **kwargs):
 		return self.renderEntry(skel, "editSuccess", params)
@@ -278,7 +259,7 @@ class DefaultRender(object):
 			skels.append(self.renderSkelValues(skel))
 
 		res["entrys"] = skels
-		return json.dumps(res, cls=CustomJsonEncoder)
+		return json.dumps(res)
 
 	def renameSuccess(self, rootNode, path, src, dest, params=None, *args, **kwargs):
 		return json.dumps("OKAY")

@@ -11,7 +11,7 @@ from itertools import chain
 from time import time
 from typing import Any, Callable, Dict, Iterable, List, Tuple, Union, Set, Optional
 
-from viur.core import conf, db, errors, utils, email
+from viur.core import conf, errors, utils, email, db
 from viur.core.bones import baseBone, dateBone, keyBone, relationalBone, selectBone, stringBone
 from viur.core.bones.bone import ReadFromClientError, ReadFromClientErrorSeverity, getSystemInitialized
 from viur.core.tasks import CallableTask, CallableTaskBase, callDeferred, QueryIter
@@ -677,7 +677,7 @@ class Skeleton(BaseSkeleton, metaclass=MetaSkel):
 		return complete
 
 	@classmethod
-	def fromDB(cls, skelValues: SkeletonInstance, key: Union[str, db.KeyClass]) -> bool:
+	def fromDB(cls, skelValues: SkeletonInstance, key: Union[str, db.Key]) -> bool:
 		"""
 			Load entity with *key* from the data store into the Skeleton.
 
@@ -706,7 +706,7 @@ class Skeleton(BaseSkeleton, metaclass=MetaSkel):
 		return True
 
 	@classmethod
-	def toDB(cls, skelValues: SkeletonInstance, clearUpdateTag: bool = False) -> db.KeyClass:
+	def toDB(cls, skelValues: SkeletonInstance, clearUpdateTag: bool = False) -> db.Key:
 		"""
 			Store current Skeleton entity to data store.
 
@@ -731,7 +731,7 @@ class Skeleton(BaseSkeleton, metaclass=MetaSkel):
 			# Load the current values from Datastore or create a new, empty db.Entity
 			if not dbKey:
 				# We'll generate the key we'll be stored under early so we can use it for locks etc
-				dbKey = db.__client__.allocate_ids(db.Key(skel.kindName), 1)[0]
+				dbKey = db.AllocateIDs(db.Key(skel.kindName))
 				dbObj = db.Entity(dbKey)
 				oldCopy = {}
 				dbObj["viur"] = {}
@@ -1046,7 +1046,7 @@ class Skeleton(BaseSkeleton, metaclass=MetaSkel):
 				bone.delete(skel, boneName)
 				if bone.unique:
 					flushList = []
-					for lockValue in viurData["%s_uniqueIndexValue" % boneName]:
+					for lockValue in viurData.get("%s_uniqueIndexValue" % boneName) or []:
 						lockKey = db.Key("%s_%s_uniquePropertyIndex" % (skel.kindName, boneName), lockValue)
 						lockObj = db.Get(lockKey)
 						if not lockObj:
@@ -1323,7 +1323,10 @@ def updateRelations(destKey: db.Key, minChangeTime: int, changedBone: Optional[s
 		except AssertionError:
 			logging.info("Ignoring %s which refers to unknown kind %s" % (str(srcRel.key), srcRel["viur_src_kind"]))
 			continue
-		db.RunInTransaction(updateTxn, skel, srcRel["src"].key, srcRel.key)
+		if db.IsInTransaction():
+			updateTxn(skel, srcRel["src"].key, srcRel.key)
+		else:
+			db.RunInTransaction(updateTxn, skel, srcRel["src"].key, srcRel.key)
 	nextCursor = updateListQuery.getCursor()
 	if len(updateList) == 5 and nextCursor:
 		updateRelations(destKey, minChangeTime, changedBone, nextCursor)
