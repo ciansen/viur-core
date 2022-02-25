@@ -553,9 +553,18 @@ class Tree(BasicApplication):
 		skel = self.addSkel(skelType)  # srcSkel - the skeleton to be moved
 		parentNodeSkel = self.editSkel("node")  # destSkel - the node it should be moved into
 
-		if not skel.fromDB(key) or not parentNodeSkel.fromDB(parentNode):
-			# Could not find one of the entities
-			raise errors.NotFound()
+		if not skel.fromDB(key):
+			raise errors.NotFound("Cannot find key entity")
+
+		if not parentNodeSkel.fromDB(parentNode):
+			parentNode = utils.normalizeKey(db.KeyClass.from_legacy_urlsafe(parentNode))
+
+			if parentNode.kind != parentNodeSkel.kindName:
+				raise errors.NotFound(
+					f"You provided a key of kind {parentNode.kind}, but require a {parentNodeSkel.kindName}."
+				)
+
+			raise errors.NotFound("Cannot find parentNode entity")
 
 		if not self.canMove(skelType, skel, parentNodeSkel):
 			raise errors.Unauthorized()
