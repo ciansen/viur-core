@@ -225,17 +225,15 @@ class Tree(BasicApplication):
 			db.Put(node)
 
 		# Fix all nodes
-		for repo in db.Query(self.viewSkel("node").kindName) \
-			.filter("parententry =", parentNode) \
-			.iter(keysOnly=True):  # fixme KeysOnly not working
+		q = db.Query(self.viewSkel("node").kindName).filter("parententry =", parentNode)
+		for repo in q.iter():
 			self.updateParentRepo(repo.key, newRepoKey, depth=depth + 1)
 			db.RunInTransaction(fixTxn, repo.key, newRepoKey)
 
 		# Fix the leafs on this level
 		if self.leafSkelCls:
-			for repo in db.Query(self.viewSkel("leaf").kindName) \
-				.filter("parententry =", parentNode) \
-				.iter(keysOnly=True):
+			q = db.Query(self.viewSkel("leaf").kindName).filter("parententry =", parentNode)
+			for repo in q.iter():
 				db.RunInTransaction(fixTxn, repo.key, newRepoKey)
 
 	## Internal exposed functions
