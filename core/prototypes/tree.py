@@ -550,7 +550,7 @@ class Tree(BasicApplication):
 			raise errors.NotFound("Cannot find key entity")
 
 		if not parentNodeSkel.fromDB(parentNode):
-			parentNode = utils.normalizeKey(db.KeyClass.from_legacy_urlsafe(parentNode))
+			parentNode = utils.normalizeKey(db.Key.from_legacy_urlsafe(parentNode))
 
 			if parentNode.kind != parentNodeSkel.kindName:
 				raise errors.NotFound(
