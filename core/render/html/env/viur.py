@@ -12,11 +12,21 @@ from hashlib import sha512
 from typing import Dict, List, Union, Optional
 
 import viur.core.render.html.default
-from viur.core import db, errors, prototypes, securitykey, utils
+from viur.core import errors, prototypes, securitykey, utils, db
 from viur.core.render.html.utils import jinjaGlobalFilter, jinjaGlobalFunction
 from viur.core.skeleton import RelSkel, SkeletonInstance
 from viur.core.utils import currentLanguage, currentRequest
 from viur.core.config import unsetMarker, conf
+from viur.core.i18n import translate as translationClass
+
+
+@jinjaGlobalFunction
+def translate(render, key, **kwargs):
+	res = str(translationClass(key))
+	for k, v in kwargs.items():
+		res = res.replace("{{%s}}" % k, str(v))
+	return res
+
 
 
 @jinjaGlobalFunction
@@ -92,6 +102,11 @@ def execRequest(render, path, *args, **kwargs):
 		currReq.internalRequest = lastRequestState
 		return (u"%s not callable or not exposed" % str(caller))
 	try:
+		# Don't pull style-parameter thru
+		if "style" in kwargs:
+			kwargs = kwargs.copy()
+			del kwargs["style"]
+
 		resstr = caller(*args, **kwargs)
 	except Exception as e:
 		logging.error("Caught execption in execRequest while calling %s" % path)
@@ -510,7 +525,7 @@ def shortKey(render, val):
 	"""
 
 	try:
-		k = db.KeyClass.from_legacy_urlsafe(str(val))
+		k = db.Key.from_legacy_urlsafe(str(val))
 		return k.id_or_name
 
 	except:

@@ -4,7 +4,7 @@ import logging
 from time import time
 from typing import Optional
 
-from viur.core import db, utils, errors, securitykey
+from viur.core import utils, errors, conf, securitykey, db
 from viur.core import forcePost, forceSSL, exposed, internalExposed
 from viur.core.bones import keyBone, numericBone
 from viur.core.prototypes import BasicApplication
@@ -30,7 +30,7 @@ class TreeSkel(Skeleton):
 		super().refresh(skelValues)
 		if not skelValues["parententry"] and skelValues.dbEntity.get("parentdir"):  # parentdir for viur2 compatibility
 			skelValues["parententry"] = utils.normalizeKey(
-				db.KeyClass.from_legacy_urlsafe(skelValues.dbEntity["parentdir"]))
+				db.Key.from_legacy_urlsafe(skelValues.dbEntity["parentdir"]))
 
 
 class Tree(BasicApplication):
@@ -184,7 +184,7 @@ class Tree(BasicApplication):
 		"""
 		return []
 
-	def getRootNode(self, entryKey: db.KeyClass) -> Skeleton:
+	def getRootNode(self, entryKey: db.Key) -> Skeleton:
 		"""
 		Returns the root-node for a given child.
 
@@ -239,7 +239,7 @@ class Tree(BasicApplication):
 	## Internal exposed functions
 
 	@internalExposed
-	def pathToKey(self, key: db.KeyClass):
+	def pathToKey(self, key: db.Key):
 		"""
 		Returns the recursively expanded path through the Tree from the root-node to a
 		requested node.
@@ -507,26 +507,19 @@ class Tree(BasicApplication):
 		:param key: URL-safe key of the node which children should be deleted.
 		:type key: str
 		"""
-		if not (skelType := self._checkSkelType(skelType)):
-			raise ValueError("Unsupported skelType")
-
-		nodeKey = db.keyHelper(parentKey, self.viewSkel("node").kindName)
-
-		q = self.baseSkel(skelType).all()
-		q.filter("parententry =", nodeKey)
-		q.setCursor(cursor)
-
-		for skel in q.fetch(limit=99):
-			if skelType == "node":
-				self.deleteRecursive("node", skel["key"])
-
-				if self.leafSkelCls:
-					self.deleteRecursive("leaf", skel["key"])
-
-			skel.delete()
-
-		if cursor := q.getCursor():
-			self.deleteRecursive(skelType, parentKey, cursor)
+		nodeKey = db.keyHelper(nodeKey, self.viewSkel("node").kindName)
+		if self.leafSkelCls:
+			for leaf in db.Query(self.viewSkel("leaf").kindName).filter("parententry =", nodeKey).iter():
+				leafSkel = self.viewSkel("leaf")
+				if not leafSkel.fromDB(leaf.key):
+					continue
+				leafSkel.delete()
+		for node in db.Query(self.viewSkel("node").kindName).filter("parententry =", nodeKey).iter():
+			self.deleteRecursive(node.key)
+			nodeSkel = self.viewSkel("node")
+			if not nodeSkel.fromDB(node.key):
+				continue
+			nodeSkel.delete()
 
 	@exposed
 	@forceSSL
@@ -550,8 +543,8 @@ class Tree(BasicApplication):
 		if not (skelType := self._checkSkelType(skelType)):
 			raise errors.NotAcceptable(f"Invalid skelType provided.")
 
-		skel = self.addSkel(skelType)  # srcSkel - the skeleton to be moved
-		parentNodeSkel = self.editSkel("node")  # destSkel - the node it should be moved into
+		skel = self.editSkel(skelType)  # srcSkel - the skeleton to be moved
+		parentNodeSkel = self.baseSkel("node")  # destSkel - the node it should be moved into
 
 		if not skel.fromDB(key):
 			raise errors.NotFound("Cannot find key entity")
@@ -570,8 +563,7 @@ class Tree(BasicApplication):
 			raise errors.Unauthorized()
 
 		if skel["key"] == parentNodeSkel["key"]:
-			# Cannot move a node into itself
-			raise errors.NotAcceptable()
+			raise errors.NotAcceptable("Cannot move a node into itself")
 
 		## Test for recursion
 		currLevel = db.Get(parentNodeSkel["key"])
@@ -583,13 +575,12 @@ class Tree(BasicApplication):
 				break
 			currLevel = db.Get(currLevel["parententry"])
 		else:  # We did not "break" - recursion-level exceeded or loop detected
-			raise errors.NotAcceptable()
+			raise errors.NotAcceptable("Unable to find a root node in recursion?")
 
 		# Test if we try to move a rootNode
 		tmp = skel.dbEntity
 		if "rootNode" in tmp and tmp["rootNode"] == 1:
-			# Cant move a rootNode away..
-			raise errors.NotAcceptable()
+			raise errors.NotAcceptable("Can't move a rootNode to somewhere else")
 
 		if not securitykey.validate(kwargs.get("skey", ""), useSessionKey=True):
 			raise errors.PreconditionFailed()
@@ -602,13 +593,16 @@ class Tree(BasicApplication):
 				skel["sortindex"] = float(kwargs["sortindex"])
 			except:
 				raise errors.PreconditionFailed()
+
+		self.onEdit(skelType, skel)
 		skel.toDB()
+		self.onEdited(skelType, skel)
 
 		# Ensure a changed parentRepo get's proagated
 		if currentParentRepo != parentNodeSkel["parentrepo"]:
 			self.updateParentRepo(key, parentNodeSkel["parentrepo"])
-		return self.render.editSuccess(
-			skel)  # new Sig, has no args and kwargs , skelType = skelType, action = "move", destNode = parentNodeSkel )
+
+		return self.render.editSuccess(skel)
 
 	## Default access control functions
 
@@ -738,7 +732,7 @@ class Tree(BasicApplication):
 			return True
 		return False
 
-	def canMove(self, skelType: str, node: str, destNode: str) -> bool:
+	def canMove(self, skelType: str, node: SkeletonInstance, destNode: SkeletonInstance) -> bool:
 		"""
 		Access control function for moving permission.
 
