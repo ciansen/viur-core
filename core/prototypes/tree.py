@@ -507,7 +507,7 @@ class Tree(BasicApplication):
 		:param key: URL-safe key of the node which children should be deleted.
 		:type key: str
 		"""
-		nodeKey = db.keyHelper(nodeKey, self.viewSkel("node").kindName)
+		nodeKey = db.keyHelper(parentKey, self.viewSkel("node").kindName)
 		if self.leafSkelCls:
 			for leaf in db.Query(self.viewSkel("leaf").kindName).filter("parententry =", nodeKey).iter():
 				leafSkel = self.viewSkel("leaf")
