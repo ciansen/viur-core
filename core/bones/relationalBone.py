@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import typing
+
 from viur.core.bones import baseBone
 from viur.core.bones.bone import getSystemInitialized
 from viur.core import utils, db
@@ -542,6 +544,28 @@ class relationalBone(baseBone):
 			dbFilter.order(*orderList)
 		return name, skel, dbFilter, rawFilter
 
+	def _rewriteInternalQuery(self, name, skel, dbFilter, rawFilter):
+		"""
+			Rewrites a datastore query to operate on "viur-relations" instead of the original kind.
+			This is needed to perform relational queries on n:m relations.
+		"""
+		return name, skel, dbFilter, rawFilter
+
+	def buildInternalDbFilter(self, name, skel, dbFilter, rawFilter: typing.Dict[str, typing.List[typing.Tuple[str, typing.Optional[str], typing.Any]]], prefix=None) -> db.Query:
+		relSkel, _usingSkelCache = self._getSkels()
+		origQueries = dbFilter.queries
+
+		if origQueries is None:  # This query is unsatisfiable
+			return dbFilter
+
+		myKeys = rawFilter.get(name, list())
+
+		if len(myKeys) > 0:  # We filter by some properties
+			if dbFilter.getKind() != "viur-relations" and self.multiple:
+				name, skel, dbFilter, rawFilter = self._rewriteInternalQuery(name, skel, dbFilter, rawFilter)
+
+		return dbFilter
+
 	def buildDBFilter(self, name, skel, dbFilter, rawFilter, prefix=None):
 		relSkel, _usingSkelCache = self._getSkels()
 		origQueries = dbFilter.queries
@@ -592,10 +616,9 @@ class relationalBone(baseBone):
 						if checkKey == bname:
 							newFilter = {key: value}
 							if self.multiple:
-								bone.buildDBFilter(bname, relSkel, dbFilter, newFilter, prefix=(prefix or "") + "dest.")
+								bone.buildDBFilter(bname, relSkel, dbFilter, newFilter, prefix=f"{prefix or ''}dest.")
 							else:
-								bone.buildDBFilter(bname, relSkel, dbFilter, newFilter,
-												   prefix=(prefix or "") + name + ".dest.")
+								bone.buildDBFilter(bname, relSkel, dbFilter, newFilter, prefix=f"{prefix or ''}{name}.dest.")
 
 				elif _type == "rel":
 

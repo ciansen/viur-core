@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import typing
+
 from viur.core.config import conf
 from viur.core import db
 import logging
@@ -541,6 +543,33 @@ class baseBone(object):  # One Bone:
 		:return:
 		"""
 		pass
+
+	def buildInternalDbFilter(self, name, skel, dbFilter, rawFilter: typing.Dict[str, typing.List[typing.Tuple[str, typing.Optional[str], typing.Any]]], prefix=None) -> db.Query:
+		"""Parses a searchfilter created by a developer in his Request into something understood by the datastore.
+
+			This function must:
+
+				* Ignore all filters not targeting this bone
+				* Safely handle malformed data in rawFilter
+					(this parameter is directly controlled by the client)
+
+			:param name: The property-name this bone has in its Skeleton (not the description!)
+			:type name: str
+			:param skel: The :class:`server.db.Query` this bone is part of
+			:type skel: :class:`server.skeleton.Skeleton`
+			:param dbFilter: The current :class:`server.db.Query` instance the filters should be applied to
+			:type dbFilter: :class:`server.db.Query`
+			:param rawFilter: The dictionary of filters the client wants to have applied
+			:type rawFilter: dict
+			:returns: The modified :class:`server.db.Query`
+
+			The structure of rawFilter values should be a list of 2-item-tuples or lists of the form [operator:str, value:str|List[str]]
+
+		"""
+		filter_values = rawFilter.get(name, [])
+		for filter_operator, target, value in filter_values:
+			dbFilter.filter(f"{prefix or ''}{name} {filter_operator}", value)
+		return
 
 	def buildDBFilter(self, name, skel, dbFilter, rawFilter, prefix=None):
 		"""

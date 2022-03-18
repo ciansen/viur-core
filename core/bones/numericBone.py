@@ -82,6 +82,30 @@ class numericBone(baseBone):
 			return self.getEmptyValue(), [ReadFromClientError(ReadFromClientErrorSeverity.Invalid, err)]
 		return value, None
 
+	# TODO: not needed here - we'll use the base implementation...
+	# def buildInternalDBFilter(self, name, skel, dbFilter, rawFilter, prefix=None):
+	# 	updatedFilter = {}
+	# 	filter_values = rawFilter.get(name)
+	# 	if filterValues:
+	# 		for filter_entry in filter_values:
+	# 	for parmKey, paramValue in rawFilter.items():
+	# 		if parmKey.startswith(name):
+	# 			if parmKey != name and not parmKey.startswith(name + "$"):
+	# 				# It's just another bone which name start's with our's
+	# 				continue
+	# 			try:
+	# 				if not self.precision:
+	# 					paramValue = int(paramValue)
+	# 				else:
+	# 					paramValue = float(paramValue)
+	# 			except ValueError:
+	# 				# The value we should filter by is garbage, cancel this query
+	# 				logging.warning("Invalid filtering! Unparsable int/float supplied to numericBone %s" % name)
+	# 				raise RuntimeError()
+	# 			updatedFilter[parmKey] = paramValue
+	# 	return super(numericBone, self).buildDBFilter(name, skel, dbFilter, updatedFilter, prefix)
+
+
 	def buildDBFilter(self, name, skel, dbFilter, rawFilter, prefix=None):
 		updatedFilter = {}
 		for parmKey, paramValue in rawFilter.items():

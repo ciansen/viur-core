@@ -231,6 +231,13 @@ class dateBone(baseBone):
 			# We got garbage from the datastore
 			return None
 
+	def buildInternalDBFilter(self, name, skel, dbFilter, rawFilter, prefix=None):
+		for key in [x for x in rawFilter.keys() if x.startswith(name)]:
+			resDict = {}
+			if not self.fromClient(resDict, key, rawFilter):  # Parsing succeeded
+				super(dateBone, self).buildInternalDBFilter(name, skel, dbFilter, {key: resDict[key]}, prefix=prefix)
+		return dbFilter
+
 	def buildDBFilter(self, name, skel, dbFilter, rawFilter, prefix=None):
 		for key in [x for x in rawFilter.keys() if x.startswith(name)]:
 			resDict = {}

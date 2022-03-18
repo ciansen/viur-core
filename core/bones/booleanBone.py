@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from viur.core.bones import baseBone
+from viur.core import db
 from viur.core.bones.bone import ReadFromClientError, ReadFromClientErrorSeverity
 import logging
 from typing import List, Union, Any
@@ -50,6 +51,17 @@ class booleanBone(baseBone):
 			else:
 				skel[boneName] = False
 
+	def buildInternalDbFilter(self, name, skel, dbFilter, rawFilter, prefix=None) -> db.Query:
+		if name in rawFilter:
+			val = rawFilter[name]
+			if str(val) in self.trueStrs:
+				val = True
+			else:
+				val = False
+			return super(booleanBone, self).buildInternalDbFilter(name, skel, dbFilter, {name: ["=", val]}, prefix=prefix)
+		else:
+			return dbFilter
+
 	def buildDBFilter(self, name, skel, dbFilter, rawFilter, prefix=None):
 		if name in rawFilter:
 			val = rawFilter[name]
@@ -57,6 +69,6 @@ class booleanBone(baseBone):
 				val = True
 			else:
 				val = False
-			return (super(booleanBone, self).buildDBFilter(name, skel, dbFilter, {name: val}, prefix=prefix))
+			return super(booleanBone, self).buildDBFilter(name, skel, dbFilter, {name: val}, prefix=prefix)
 		else:
-			return (dbFilter)
+			return dbFilter
