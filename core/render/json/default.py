@@ -1,4 +1,6 @@
 import json
+import logging
+import typing
 from collections import OrderedDict
 from viur.core import bones, utils, config
 from viur.core import db
@@ -7,6 +9,25 @@ from viur.core.utils import currentRequest
 from viur.core.i18n import translate
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
+
+
+def prepareDeriveName(deriver, sizeDict: typing.Dict[str, typing.Any]) -> str:
+    """We need a valid filename from one of the derived image spec
+
+    TODO: change deriver globally to an class with this method
+    """
+
+    file_extension = sizeDict.get("fileExtension", "webp")
+    target_name = ""
+    if "width" in sizeDict and "height" in sizeDict:
+        width = sizeDict["width"]
+        height = sizeDict["height"]
+        target_name = f"{deriver}-{width}-{height}.{file_extension}"
+    elif "width" in sizeDict:
+        width = sizeDict["width"]
+        # target_name = "thumbnail-w%s.%s" % (width, file_extension)
+        target_name = f"{deriver}-w{width}.{file_extension}"
+    return target_name
 
 
 class CustomJsonEncoder(json.JSONEncoder):
@@ -129,7 +150,8 @@ class DefaultRender(object):
     def renderSingleBoneValue(self, value: Any,
                               bone: bones.BaseBone,
                               skel: SkeletonInstance,
-                              key
+                              key,
+                              deriveSpec: typing.Dict = None
                               ) -> Union[Dict, str, None]:
         """
         Renders the value of a bone.
@@ -144,57 +166,82 @@ class DefaultRender(object):
         """
         if isinstance(bone, bones.RelationalBone):
             if isinstance(value, dict):
+                # logging.debug("renderSingleBoneValue: %r, %r, %r, %r", bone.descr, value, key, deriveSpec)
                 return {
-                    "dest": self.renderSkelValues(value["dest"], injectDownloadURL=isinstance(bone, bones.FileBone)),
-                    "rel": (self.renderSkelValues(value["rel"], injectDownloadURL=isinstance(bone, bones.FileBone))
+                    "dest": self.renderSkelValues(value["dest"], injectDownloadURL=isinstance(bone, bones.FileBone), deriveSpec=deriveSpec),
+                    "rel": (self.renderSkelValues(value["rel"], injectDownloadURL=isinstance(bone, bones.FileBone), deriveSpec=deriveSpec)
                             if value["rel"] else None),
                 }
         elif isinstance(bone, bones.RecordBone):
-            return self.renderSkelValues(value)
+            return self.renderSkelValues(value, deriveSpec=deriveSpec)
         elif isinstance(bone, bones.PasswordBone):
             return ""
         else:
             return value
         return None
 
-    def renderBoneValue(self, bone: bones.BaseBone, skel: SkeletonInstance, key: str) -> Union[List, Dict, None]:
+    def renderBoneValue(self, bone: bones.BaseBone, skel: SkeletonInstance, key: str, deriveSpec: typing.Dict = None) -> Union[List, Dict, None]:
+        # logging.debug("renderBoneValue: %r, %r", key, deriveSpec)
         boneVal = skel[key]
+        if not deriveSpec and hasattr(bone, "derive"):
+            deriveSpec = {"boneName": key, "spec": bone.derive}
+
         if bone.languages and bone.multiple:
             res = {}
             for language in bone.languages:
                 if boneVal and language in boneVal and boneVal[language]:
-                    res[language] = [self.renderSingleBoneValue(v, bone, skel, key) for v in boneVal[language]]
+                    res[language] = [self.renderSingleBoneValue(v, bone, skel, key, deriveSpec=deriveSpec) for v in boneVal[language]]
                 else:
                     res[language] = []
         elif bone.languages:
             res = {}
             for language in bone.languages:
                 if boneVal and language in boneVal and boneVal[language]:
-                    res[language] = self.renderSingleBoneValue(boneVal[language], bone, skel, key)
+                    res[language] = self.renderSingleBoneValue(boneVal[language], bone, skel, key, deriveSpec=deriveSpec)
                 else:
                     res[language] = None
         elif bone.multiple:
-            res = [self.renderSingleBoneValue(v, bone, skel, key) for v in boneVal] if boneVal else None
+            res = [self.renderSingleBoneValue(v, bone, skel, key, deriveSpec=deriveSpec) for v in boneVal] if boneVal else None
         else:
-            res = self.renderSingleBoneValue(boneVal, bone, skel, key)
+            res = self.renderSingleBoneValue(boneVal, bone, skel, key, deriveSpec=deriveSpec)
         return res
 
-    def renderSkelValues(self, skel: SkeletonInstance, injectDownloadURL: bool = False) -> Optional[Dict]:
+    def renderSkelValues(self, skel: SkeletonInstance, injectDownloadURL: bool = False, deriveSpec: typing.Dict = None) -> Optional[Dict]:
         """
         Prepares values of one :class:`viur.core.skeleton.Skeleton` or a list of skeletons for output.
 
         :param skel: Skeleton which contents will be processed.
         """
+        # logging.debug("renderSkelValues: %r", deriveSpec)
         if skel is None:
             return None
         elif isinstance(skel, dict):
             return skel
         res = {}
         for key, bone in skel.items():
-            res[key] = self.renderBoneValue(bone, skel, key)
+            res[key] = self.renderBoneValue(bone, skel, key, deriveSpec=deriveSpec)
         if injectDownloadURL and "dlkey" in skel and "name" in skel:
-            res["downloadUrl"] = utils.downloadUrlFor(skel["dlkey"], skel["name"], derived=False,
-                                                      expires=config.conf["viur.render.json.downloadUrlExpiration"])
+            res["downloadUrl"] = utils.downloadUrlFor(
+                skel["dlkey"],
+                skel["name"],
+                derived=False,
+                expires=config.conf["viur.render.json.downloadUrlExpiration"])
+
+        # logging.debug("renderSkelValues zwischenergebnis: %r", res)
+        # logging.debug("renderSkelValues deriveSpec: %r", deriveSpec)
+        if deriveSpec and "dlkey" in skel:
+            boneName = deriveSpec["boneName"]
+            derivePayload = deriveSpec["spec"]
+            for deriver, deriveConfigs in derivePayload.items():
+                # logging.debug("deriver, deriveConfig: %r, %r", deriver, deriveConfigs)
+                for item in deriveConfigs:
+                    if item.get("renderer", {}).get(self.kind):
+                        filename = prepareDeriveName(deriver, item)
+                        url = utils.downloadUrlFor(skel["dlkey"], filename, True, 0)
+                        # logging.debug("just before cool: %r, %r", filename, url)
+                        # logging.debug("just res: %r", res)
+                        res["derived"]["files"][filename]["downloadUrl"] = url
+
         return res
 
     def renderEntry(self, skel: SkeletonInstance, actionName, params=None):
@@ -294,3 +341,15 @@ class DefaultRender(object):
 
     def cloneSuccess(self, tpl=None, params=None, *args, **kwargs):
         return json.dumps("OKAY")
+
+    def checker(self, dlkey: str, filename: str) -> str:
+        """This should be handled otherwise, but here we get from outside valid download urls for known dl keys :P
+
+        :param dlkey:
+        :param filename:
+        :return:
+
+        FIXME: security and this should not be needed...
+        """
+        logging.debug("checker: %r, %r", dlkey, filename)
+        return utils.downloadUrlFor(dlkey, filename, derived=True, expires=0)
