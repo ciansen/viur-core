@@ -4,6 +4,7 @@ import os
 import random
 import string
 import logging
+import typing
 from base64 import urlsafe_b64encode
 from contextvars import ContextVar
 from datetime import datetime, timedelta, timezone
@@ -162,7 +163,7 @@ def downloadUrlFor(folder: str, fileName: str, derived: bool = False,
     return "/file/download/%s?sig=%s" % (sigStr.decode("ASCII"), resstr)
 
 
-def srcSetFor(fileObj: dict, expires: Optional[int], width: Optional[int] = None, height: Optional[int] = None) -> str:
+def srcSetFor(fileObj: dict, expires: Optional[typing.List[int]], width: Optional[typing.List[int]] = None, height: Optional[int] = None) -> str:
     """
         Generates a string suitable for use as the srcset tag in html. This functionality provides the browser
         with a list of images in different sizes and allows it to choose the smallest file that will fill it's viewport
@@ -192,10 +193,11 @@ def srcSetFor(fileObj: dict, expires: Optional[int], width: Optional[int] = None
     for fileName, derivate in fileObj["derived"]["files"].items():
         customData = derivate.get("customData", {})
         if width and customData.get("width") in width:
-            resList.append("%s %sw" % (downloadUrlFor(fileObj["dlkey"], fileName, True, expires), customData["width"]))
+            resList.append((downloadUrlFor(fileObj["dlkey"], fileName, True, expires), customData["width"], "w"))
         if height and customData.get("height") in height:
-            resList.append("%s %sh" % (downloadUrlFor(fileObj["dlkey"], fileName, True, expires), customData["height"]))
-    return ", ".join(resList)
+            resList.append((downloadUrlFor(fileObj["dlkey"], fileName, True, expires), customData["height"], "h"))
+    result = sorted(resList, key=lambda x: (x[2], x[1]))
+    return ", ".join([f"{entry[0]} {entry[1]}{entry[2]}" for entry in result])
 
 
 def seoUrlToEntry(module: str,

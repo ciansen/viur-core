@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 
-def prepareDeriveName(deriver, sizeDict: typing.Dict[str, typing.Any]) -> str:
+def prepareDeriveName(deriver: str, sizeDict: typing.Dict[str, typing.Any]) -> str:
     """We need a valid filename from one of the derived image spec
 
     TODO: change deriver globally to an class with this method
@@ -226,22 +226,19 @@ class DefaultRender(object):
                 skel["name"],
                 derived=False,
                 expires=config.conf["viur.render.json.downloadUrlExpiration"])
-
-        # logging.debug("renderSkelValues zwischenergebnis: %r", res)
-        # logging.debug("renderSkelValues deriveSpec: %r", deriveSpec)
         if deriveSpec and "dlkey" in skel:
-            boneName = deriveSpec["boneName"]
-            derivePayload = deriveSpec["spec"]
-            for deriver, deriveConfigs in derivePayload.items():
-                # logging.debug("deriver, deriveConfig: %r, %r", deriver, deriveConfigs)
-                for item in deriveConfigs:
-                    if item.get("renderer", {}).get(self.kind):
-                        filename = prepareDeriveName(deriver, item)
-                        url = utils.downloadUrlFor(skel["dlkey"], filename, True, 0)
-                        # logging.debug("just before cool: %r, %r", filename, url)
-                        # logging.debug("just res: %r", res)
-                        res["derived"]["files"][filename]["downloadUrl"] = url
-
+            widths = [item["width"] for item in deriveSpec["spec"]["thumbnail"]]
+            res["srcSet"] = utils.srcSetFor(skel, 0, widths)
+        #     derivePayload = deriveSpec["spec"]
+        #     for deriver, deriveConfigs in derivePayload.items():
+        #         srcSet = list()
+        #         for item in deriveConfigs:
+        #             if item.get("renderer", {}).get(self.kind, True):  # FIXME: this should be only conditionally activated
+        #                 filename = prepareDeriveName(deriver, item)
+        #                 url = utils.downloadUrlFor(skel["dlkey"], filename, True, 0)
+        #                 srcSet.append(f"{url} {item['width']}w")
+        #                 res["derived"]["files"][filename]["downloadUrl"] = url
+        #         res["srcSet"] = ", ".join(srcSet)
         return res
 
     def renderEntry(self, skel: SkeletonInstance, actionName, params=None):
