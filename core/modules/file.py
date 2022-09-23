@@ -83,49 +83,63 @@ class InjectStoreURLBone(BaseBone):
         return False
 
 
-def thumbnailer(fileSkel, existingFiles, params):
-    blob = bucket.get_blob("%s/source/%s" % (fileSkel["dlkey"], fileSkel["name"]))
-    if not blob:
-        logging.warning("Blob %s is missing from Cloudstore!" % fileSkel["dlkey"])
-        return
-    fileData = BytesIO()
-    blob.download_to_file(fileData)
-    resList = []
-    for sizeDict in params:
-        fileData.seek(0)
-        outData = BytesIO()
-        try:
-            img = Image.open(fileData)
-        except Image.UnidentifiedImageError:  # We can't load this image; so there's no need to try other resolutions
-            return []
-        iccProfile = img.info.get('icc_profile')
-        if iccProfile:
-            # JPEGs might be encoded with a non-standard color-profile; we need to compensate for this if we convert
-            # to WEBp as we'll loose this color-profile information
-            f = BytesIO(iccProfile)
-            src_profile = ImageCms.ImageCmsProfile(f)
-            dst_profile = ImageCms.createProfile('sRGB')
-            img = ImageCms.profileToProfile(img, inputProfile=src_profile, outputProfile=dst_profile, outputMode="RGB")
-        fileExtension = sizeDict.get("fileExtension", "webp")
-        if "width" in sizeDict and "height" in sizeDict:
-            width = sizeDict["width"]
-            height = sizeDict["height"]
-            targetName = "thumbnail-%s-%s.%s" % (width, height, fileExtension)
-        elif "width" in sizeDict:
-            width = sizeDict["width"]
-            height = int((float(img.size[1]) * float(width / float(img.size[0]))))
-            targetName = "thumbnail-w%s.%s" % (width, fileExtension)
+class Thumbnailer(utils.DeriverBase):
+
+    def getFilenameForSpec(self, img, deriveSpec) -> Optional[Dict[str, Any]]:
+        fileExtension = deriveSpec.get("fileExtension", "webp")
+        if "width" in deriveSpec and "height" in deriveSpec:
+            return {
+                "filename": "thumbnail-%s-%s.%s" % (deriveSpec["width"], deriveSpec["height"], fileExtension),
+                "width": deriveSpec["width"],
+                "height": deriveSpec["height"],
+                "fileExtension": fileExtension
+            }
+        elif "width" in deriveSpec:
+            return {
+                "filename": "thumbnail-w%s.%s" % (deriveSpec["width"], fileExtension),
+                "width": sizeDict["width"],
+                "height": int((float(img.size[1]) * float(deriveSpec["width"] / float(img.size[0])))),
+                "fileExtension": fileExtension
+            }
         else:  # No default fallback - ignore
-            continue
-        mimeType = sizeDict.get("mimeType", "image/webp")
-        img = img.resize((width, height), Image.ANTIALIAS)
-        img.save(outData, fileExtension)
-        outSize = outData.tell()
-        outData.seek(0)
-        targetBlob = bucket.blob("%s/derived/%s" % (fileSkel["dlkey"], targetName))
-        targetBlob.upload_from_file(outData, content_type=mimeType)
-        resList.append((targetName, outSize, mimeType, {"mimetype": mimeType, "width": width, "height": height}))
-    return resList
+            return None
+
+    def __call__(self, fileSkel, existingFiles, params):
+        blob = bucket.get_blob("%s/source/%s" % (fileSkel["dlkey"], fileSkel["name"]))
+        if not blob:
+            logging.warning("Blob %s is missing from Cloudstore!" % fileSkel["dlkey"])
+            return
+        fileData = BytesIO()
+        blob.download_to_file(fileData)
+        resList = []
+        for sizeDict in params:
+            fileData.seek(0)
+            outData = BytesIO()
+            try:
+                img = Image.open(fileData)
+            except Image.UnidentifiedImageError:  # We can't load this image; so there's no need to try other resolutions
+                return []
+            iccProfile = img.info.get('icc_profile')
+            if iccProfile:
+                # JPEGs might be encoded with a non-standard color-profile; we need to compensate for this if we convert
+                # to WEBp as we'll loose this color-profile information
+                f = BytesIO(iccProfile)
+                src_profile = ImageCms.ImageCmsProfile(f)
+                dst_profile = ImageCms.createProfile('sRGB')
+                img = ImageCms.profileToProfile(img, inputProfile=src_profile, outputProfile=dst_profile, outputMode="RGB")
+
+            targetData = self.getFilenameForSpec(fileSkel, sizeDict)
+            if not targetData:
+                continue
+            mimeType = sizeDict.get("mimeType", "image/webp")
+            img = img.resize((targetData["width"], targetData["height"]), Image.ANTIALIAS)
+            img.save(outData, targetData["fileExtension"])
+            outSize = outData.tell()
+            outData.seek(0)
+            targetBlob = bucket.blob("%s/derived/%s" % (fileSkel["dlkey"], targetData["filename"]))
+            targetBlob.upload_from_file(outData, content_type=mimeType)
+            resList.append((targetData["filename"], outSize, mimeType, {"mimetype": mimeType, "width": targetData["width"], "height": targetData["height"]}))
+        return resList
 
 
 

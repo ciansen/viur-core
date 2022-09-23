@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, Union, Map
 
 from viur.core import db, errors, exposed, forcePost, forceSSL, securitykey, utils
 from viur.core.cache import flushCache
@@ -373,6 +373,26 @@ class List(BasicApplication):
             return False
 
         return True
+
+    def canViewDerives(self, skel, boneName) -> Dict[str, bool]:
+        """This method checks which derives can be provided and if the original should be provided.
+
+        This is the default/fallback so we allow original's downloadUrl and all other derives.
+
+        This is mostly used by json renderer
+        :param skel:
+        :param boneName:
+        :return:
+        """
+
+        derivesSpec = getattr(skel, boneName).derived
+        derives = {}
+        if derivesSpec:
+            derives = {item: True for item in derivesSpec}
+        return {
+            "original": True,
+            "derives":  derives
+        }
 
     def canAdd(self) -> bool:
         """

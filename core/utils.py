@@ -287,4 +287,12 @@ def normalizeKey(key: Union[None, 'db.KeyClass']) -> Union[None, 'db.KeyClass']:
     return db.Key(key.kind, key.id_or_name, parent=parent)
 
 
+class DeriverBase:
+    def getFilenameForSpec(self, deriveSpecItem) -> typing.Dict[str, typing.Any]:
+        raise NotImplementedError()
+
+    def __call__(self, fileSkel, existingFiles, params):
+        raise NotImplementedError()
+
+
 from viur.core.skeleton import SkeletonInstance
