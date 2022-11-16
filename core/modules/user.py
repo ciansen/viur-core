@@ -105,6 +105,11 @@ class userSkel(Skeleton):
         readOnly=True,
         defaultValue=0
     )
+    adminconfig = RawBone(
+        descr="Store Admin Config",
+        indexed=False,
+        visible=False
+    )
 
 
 class UserPassword(object):
