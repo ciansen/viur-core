@@ -26,7 +26,6 @@ _valid_classes = ["vitxt-*", "viur-txt-*"],  # List of valid class-names that ar
 _single_tags = ["br", "img", "hr"]  # List of tags, which don't have a corresponding end tag
 
 
-
 def parseDownloadUrl(urlStr: str) -> Tuple[Optional[str], Optional[bool], Optional[str]]:
     """
         Parses a file download-url (/file/download/xxxx?sig=yyyy) into it's components
@@ -68,13 +67,17 @@ class CollectBlobKeys(HTMLParser):
 
 
 class HtmlSerializer(HTMLParser):  # html.parser.HTMLParser
-    def __init__(self, validHtml=None, srcSet=None):
-        global _defaultTags
+    def __init__(self, valid_tags=None, valid_attrs=None, valid_styles=None, valid_classes=None, single_tags=None,
+                 srcSet=None):
         super(HtmlSerializer, self).__init__()
         self.result = ""  # The final result that will be returned
         self.openTagsList = []  # List of tags that still need to be closed
         self.tagCache = []  # Tuple of tags that have been processed but not written yet
-        self.validHtml = validHtml
+        self.valid_tags = valid_tags
+        self.valid_attrs = valid_attrs
+        self.valid_styles = valid_styles
+        self.valid_classes = valid_classes
+        self.single_tags = single_tags
         self.srcSet = srcSet
 
     def handle_data(self, data):
@@ -109,7 +112,7 @@ class HtmlSerializer(HTMLParser):  # html.parser.HTMLParser
     def handle_starttag(self, tag, attrs):
         """ Delete all tags except for legal ones """
         filterChars = "\"'\\\0\r\n@()"
-        if self.validHtml and tag in self.validHtml["validTags"]:
+        if self.valid_tags and tag in self.valid_tags:
             cacheTagStart = '<' + tag
             isBlankTarget = False
             styles = None
@@ -147,7 +150,7 @@ class HtmlSerializer(HTMLParser):  # html.parser.HTMLParser
                                 .order(("creationdate", db.SortOrder.Ascending)).getEntry()
                             srcSet = utils.srcSetFor(fileObj, None, self.srcSet.get("width"), self.srcSet.get("height"))
                             cacheTagStart += ' srcSet="%s"' % srcSet
-                if not tag in self.validHtml["validAttrs"].keys() or not k in self.validHtml["validAttrs"][tag]:
+                if not tag in self.valid_attrs.keys() or not k in self.valid_attrs[tag]:
                     # That attribute is not valid on this tag
                     continue
                 if k.lower()[0:2] != 'on' and v.lower()[0:10] != 'javascript':
@@ -166,8 +169,7 @@ class HtmlSerializer(HTMLParser):  # html.parser.HTMLParser
                     if value.lower().startswith("expression") or value.lower().startswith("import"):
                         # IE evaluates JS inside styles if the keyword expression is present
                         continue
-                    if style in self.validHtml["validStyles"] and not any(
-                        [(x in value) for x in ["\"", ":", ";"]]):
+                    if style in self.valid_styles and not any([(x in value) for x in ["\"", ":", ";"]]):
                         syleRes[style] = value
                 if len(syleRes.keys()):
                     cacheTagStart += " style=\"%s\"" % "; ".join(
@@ -180,7 +182,7 @@ class HtmlSerializer(HTMLParser):  # html.parser.HTMLParser
                         # The class contains invalid characters
                         continue
                     isOkay = False
-                    for validClass in self.validHtml["validClasses"]:
+                    for validClass in self.valid_classes:
                         # Check if the classname matches or is white-listed by a prefix
                         if validClass == currentClass:
                             isOkay = True
@@ -197,7 +199,7 @@ class HtmlSerializer(HTMLParser):  # html.parser.HTMLParser
             if isBlankTarget:
                 # Add rel tag to prevent the browser to pass window.opener around
                 cacheTagStart += " rel=\"noopener noreferrer\""
-            if tag in self.validHtml["singleTags"]:
+            if tag in self.single_tags:
                 # Single-Tags do have a visual representation; ensure it makes it into the result
                 self.flushCache()
                 self.result += cacheTagStart + '>'  # dont need slash in void elements in html5
@@ -210,23 +212,22 @@ class HtmlSerializer(HTMLParser):  # html.parser.HTMLParser
             self.result += " "
 
     def handle_endtag(self, tag):
-        if self.validHtml:
-            if self.tagCache:
-                # Check if that element is still on the cache
-                # and just silently drop the cache up to that point
-                if tag in [x[1] for x in self.tagCache] + self.openTagsList:
-                    for tagCache in self.tagCache[::-1]:
-                        self.tagCache.remove(tagCache)
-                        if tagCache[1] == tag:
-                            return
-            if tag in self.openTagsList:
-                # Close all currently open Tags until we reach the current one. If no one is found,
-                # we just close everything and ignore the tag that should have been closed
-                for endTag in self.openTagsList[:]:
-                    self.result += "</%s>" % endTag
-                    self.openTagsList.remove(endTag)
-                    if endTag == tag:
-                        break
+        if self.tagCache:
+            # Check if that element is still on the cache
+            # and just silently drop the cache up to that point
+            if tag in [x[1] for x in self.tagCache] + self.openTagsList:
+                for tagCache in self.tagCache[::-1]:
+                    self.tagCache.remove(tagCache)
+                    if tagCache[1] == tag:
+                        return
+        if tag in self.openTagsList:
+            # Close all currently open Tags until we reach the current one. If no one is found,
+            # we just close everything and ignore the tag that should have been closed
+            for endTag in self.openTagsList[:]:
+                self.result += "</%s>" % endTag
+                self.openTagsList.remove(endTag)
+                if endTag == tag:
+                    break
 
     def cleanup(self):  # FIXME: vertauschte tags
         """ Append missing closing tags """
@@ -275,7 +276,7 @@ class TextBone(BaseBone):
 
         if valid_tags == TextBone.__undefinedC__:
             global _valid_tags
-            valid_tags = _defaultTags
+            valid_tags = _valid_tags
 
         if valid_attrs == TextBone.__undefinedC__:
             global _valid_attrs
@@ -308,7 +309,8 @@ class TextBone(BaseBone):
     def singleValueFromClient(self, value, skel, name, origData):
         err = self.isInvalid(value)  # Returns None on success, error-str otherwise
         if not err:
-            return HtmlSerializer(self.validHtml, self.srcSet).sanitize(value), None
+            return HtmlSerializer(self.valid_tags, self.valid_attrs, self.valid_styles, self.valid_classes,
+                                  self.single_tags, self.srcSet).sanitize(value), None
         else:
             return self.getEmptyValue(), [ReadFromClientError(ReadFromClientErrorSeverity.Invalid, err)]
 
