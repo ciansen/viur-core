@@ -8,26 +8,23 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 from viur.core import db, utils
 from viur.core.bones.base import BaseBone, ReadFromClientError, ReadFromClientErrorSeverity
 
-_defaultTags = {
-    "validTags": [  # List of HTML-Tags which are valid
-        'b', 'a', 'i', 'u', 'span', 'div', 'p', 'img', 'ol', 'ul', 'li', 'abbr', 'sub', 'sup',
-        'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'br',
-        'hr', 'strong', 'blockquote', 'em'],
-    "validAttrs": {  # Mapping of valid parameters for each tag (if a tag is not listed here: no parameters allowed)
-        "a": ["href", "target", "title"],
-        "abbr": ["title"],
-        "span": ["title"],
-        "img": ["src", "alt", "title"],  # "srcset" must not be in this list. It will be injected by ViUR
-        "td": ["colspan", "rowspan"],
-        "p": ["data-indent"],
-        "blockquote": ["cite"]
-    },
-    "validStyles": [
-        "color"
-    ],  # List of CSS-Directives we allow
-    "validClasses": ["vitxt-*", "viur-txt-*"],  # List of valid class-names that are valid
-    "singleTags": ["br", "img", "hr"]  # List of tags, which don't have a corresponding end tag
+_valid_tags = [  # List of HTML-Tags which are valid
+    'b', 'a', 'i', 'u', 'span', 'div', 'p', 'img', 'ol', 'ul', 'li', 'abbr', 'sub', 'sup',
+    'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'br',
+    'hr', 'strong', 'blockquote', 'em']
+_valid_attrs = {  # Mapping of valid parameters for each tag (if a tag is not listed here: no parameters allowed)
+    "a": ["href", "target", "title"],
+    "abbr": ["title"],
+    "span": ["title"],
+    "img": ["src", "alt", "title"],  # "srcset" must not be in this list. It will be injected by ViUR
+    "td": ["colspan", "rowspan"],
+    "p": ["data-indent"],
+    "blockquote": ["cite"]
 }
+_valid_styles = ["color"]  # List of CSS-Directives we allow
+_valid_classes = ["vitxt-*", "viur-txt-*"],  # List of valid class-names that are valid
+_single_tags = ["br", "img", "hr"]  # List of tags, which don't have a corresponding end tag
+
 
 
 def parseDownloadUrl(urlStr: str) -> Tuple[Optional[str], Optional[bool], Optional[str]]:
@@ -256,7 +253,11 @@ class TextBone(BaseBone):
     def __init__(
         self,
         *,
-        validHtml: Union[None, Dict] = __undefinedC__,
+        valid_tags: Dict = __undefinedC__,
+        valid_attrs: Dict = __undefinedC__,
+        valid_styles: List = __undefinedC__,
+        valid_classes: List = __undefinedC__,
+        single_tags: List = __undefinedC__,
         maxLength: int = 200000,
         srcSet: Optional[Dict[str, List]] = None,
         indexed: bool = False,
@@ -272,11 +273,32 @@ class TextBone(BaseBone):
         """
         super().__init__(indexed=indexed, **kwargs)
 
-        if validHtml == TextBone.__undefinedC__:
-            global _defaultTags
-            validHtml = _defaultTags
+        if valid_tags == TextBone.__undefinedC__:
+            global _valid_tags
+            valid_tags = _defaultTags
 
-        self.validHtml = validHtml
+        if valid_attrs == TextBone.__undefinedC__:
+            global _valid_attrs
+            valid_attrs = _valid_attrs
+
+        if valid_styles == TextBone.__undefinedC__:
+            global _valid_styles
+            valid_styles = _valid_styles
+
+        if valid_classes == TextBone.__undefinedC__:
+            global _valid_classes
+            valid_classes = _valid_classes
+
+        if single_tags == TextBone.__undefinedC__:
+            global _single_tags
+            single_tags = _single_tags
+
+        self.valid_tags = valid_tags
+        self.valid_attrs = valid_attrs
+        self.valid_styles = valid_styles
+        self.valid_classes = valid_classes
+        self.single_tags = single_tags
+
         self.maxLength = maxLength
         self.srcSet = srcSet
 
