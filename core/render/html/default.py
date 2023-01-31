@@ -411,7 +411,7 @@ class Render(object):
             **kwargs
         )
 
-    def list(self, skellist: SkelList, action: str = "list", tpl: str = None, params: Any = None, **kwargs) -> str:
+    def list(self, skellist: db.SkelListRef, action: str = "list", tpl: str = None, params: Any = None, **kwargs) -> str:
         """
         Renders a page with a list of entries.
 
@@ -426,10 +426,11 @@ class Render(object):
         :return: Returns the emitted HTML response.
         """
         template = self.get_template("list", tpl)
-
-        for skel in skellist:
-            skel.renderPreparation = self.renderBoneValue
-
+        if isinstance(skellist, (db.SkelListRef, SkelList)):
+            skellist.renderPreparation = self.renderBoneValue
+        else:
+            for skel in skellist:
+                skel.renderPreparation = self.renderBoneValue
         return template.render(skellist=skellist, action=action, params=params, **kwargs)
 
     def view(self, skel: SkeletonInstance, action: str = "view", tpl: str = None, params: Any = None, **kwargs) -> str:
@@ -542,7 +543,8 @@ class Render(object):
         """
         if isinstance(skel, SkeletonInstance):
             skel.renderPreparation = self.renderBoneValue
-
+        elif isinstance(skel, (SkelList, SkeletonInstance)):
+            skel.renderPreparation = self.renderBoneValue
         elif isinstance(skel, list):
             for x in skel:
                 if isinstance(x, SkeletonInstance):
@@ -561,7 +563,8 @@ class Render(object):
 
         if isinstance(skel, SkeletonInstance):
             skel.renderPreparation = None
-
+        elif isinstance(skel, (SkelList, SkeletonInstance)):
+            skel.renderPreparation = None
         elif isinstance(skel, list):
             for x in skel:
                 if isinstance(x, SkeletonInstance):

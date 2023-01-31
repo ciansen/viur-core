@@ -310,11 +310,10 @@ def getList(render: Render, module: str, skel: str = "viewSkel",
         query = caller.listFilter(query)
     if query is None:
         return None
-    mylist = query.fetch()
-    if mylist:
-        for skel in mylist:
-            skel.renderPreparation = render.renderBoneValue
-    return mylist
+    skel_list = query.fetch()
+    if skel_list:
+        skel_list.renderPreparation = render.renderBoneValue
+    return skel_list
 
 
 @jinjaGlobalFunction
