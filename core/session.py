@@ -22,8 +22,9 @@ import google.appengine.api.memcache
     A get-method is provided for convenience.
     It returns None instead of raising an Exception if the key is not found.
 """
+if not conf["viur.instance.is_dev_server"] and conf["viur.session.from_memcache"]:
+    memcache_client = google.appengine.api.memcache.Client()
 
-memcache_client = google.appengine.api.memcache.Client()
 class Session:
     """
         Store Sessions inside the datastore.
@@ -115,7 +116,7 @@ class Session:
             dbSession["securityKey"] = self.securityKey
             dbSession["lastseen"] = time.time()
             dbSession["user"] = str(user_key)  # allow filtering for users
-            memcache_client.set(self.cookieKey, dbSession)
+            memcache_client.set(self.cookieKey, dbSession, conf["viur.session.lifeTime"])
         else:
             dbSession = db.Entity(db.Key(self.kindName, self.cookieKey))
             dbSession["data"] = db.fixUnindexableProperties(self.session)
