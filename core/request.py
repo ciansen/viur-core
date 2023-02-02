@@ -19,7 +19,7 @@ from viur.core.logging import client as loggingClient, requestLogger, requestLog
 from viur.core.securityheaders import extendCsp
 from viur.core.utils import currentLanguage, currentSession
 from viur.core.tasks import _appengineServiceIPs
-
+from timeit import default_timer
 """
     This module implements the WSGI (Web Server Gateway Interface) layer for ViUR. This is the main entry
     point for incomming http requests. The main class is the :class:BrowserHandler. Each request will get it's
@@ -263,7 +263,9 @@ class BrowseHandler():  # webapp.RequestHandler
             return
 
         try:
+            s = default_timer()
             currentSession.get().load(self)
+            logging.error(f"Loading session took {1000*(default_timer()-s)}ms")
             path = self.selectLanguage(path)[1:]
             if conf["viur.requestPreprocessor"]:
                 path = conf["viur.requestPreprocessor"](path)

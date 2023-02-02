@@ -218,8 +218,10 @@ class UserPassword:
         if not isOkay:
             self.loginRateLimit.decrementQuota()  # Only failed login attempts will count to the quota
             skel = self.loginSkel()
+            logging.error("error")
             return self.userModule.render.login(skel, loginFailed=True, accountStatus=accountStatus)
         else:
+            logging.error("weiter")
             return self.userModule.continueAuthenticationFlow(self, res.key)
 
     @exposed

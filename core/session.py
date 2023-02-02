@@ -5,7 +5,7 @@ from viur.core.request import BrowseHandler
 from viur.core.config import conf  # this import has to stay alone due partial import
 from viur.core import db, utils, tasks
 from typing import Any, Optional, Union
-
+import google.appengine.api.memcache
 """
     Provides the session implementation for the Google AppEngine™ based on the datastore.
     To access the current session, use `utils.currentSession.get()`.
@@ -23,7 +23,7 @@ from typing import Any, Optional, Union
     It returns None instead of raising an Exception if the key is not found.
 """
 
-
+memcache_client = google.appengine.api.memcache.Client()
 class Session:
     """
         Store Sessions inside the datastore.
@@ -59,7 +59,7 @@ class Session:
         self.sslKey = None
         self.staticSecurityKey = None
         self.securityKey = None
-        self.session = {}
+        self.session = db.Entity()
 
     def load(self, req: BrowseHandler):
         """
@@ -70,7 +70,8 @@ class Session:
         """
         if self.cookieName in req.request.cookies:
             cookie = str(req.request.cookies[self.cookieName])
-            if data := db.Get(db.Key(self.kindName, cookie)):  # Loaded successfully
+
+            if data := self.load_session_data(cookie):
                 if data["lastseen"] < time.time() - conf["viur.session.lifeTime"]:
                     # This session is too old
                     self.reset()
@@ -107,17 +108,24 @@ class Session:
             user_key = conf["viur.mainApp"].user.getCurrentUser()["key"]
         except Exception:
             user_key = Session.GUEST_USER  # this is a guest
+        if not conf["viur.instance.is_dev_server"] and conf["viur.session.from_memcache"]:
+            dbSession = {}
+            dbSession["data"] = self.session
+            dbSession["staticSecurityKey"] = self.staticSecurityKey
+            dbSession["securityKey"] = self.securityKey
+            dbSession["lastseen"] = time.time()
+            dbSession["user"] = str(user_key)  # allow filtering for users
+            memcache_client.set(self.cookieKey, dbSession)
+        else:
+            dbSession = db.Entity(db.Key(self.kindName, self.cookieKey))
+            dbSession["data"] = db.fixUnindexableProperties(self.session)
+            dbSession["staticSecurityKey"] = self.staticSecurityKey
+            dbSession["securityKey"] = self.securityKey
+            dbSession["lastseen"] = time.time()
+            dbSession["user"] = str(user_key)  # allow filtering for users
+            dbSession.exclude_from_indexes = ["data"]
 
-        dbSession = db.Entity(db.Key(self.kindName, self.cookieKey))
-
-        dbSession["data"] = db.fixUnindexableProperties(self.session)
-        dbSession["staticSecurityKey"] = self.staticSecurityKey
-        dbSession["securityKey"] = self.securityKey
-        dbSession["lastseen"] = time.time()
-        dbSession["user"] = str(user_key)  # allow filtering for users
-        dbSession.exclude_from_indexes = ["data"]
-
-        db.Put(dbSession)
+            db.Put(dbSession)
 
         # Provide Set-Cookie header entry with configured settings
         flags = (
@@ -199,7 +207,10 @@ class Session:
             :warning: Everything is flushed.
         """
         if self.cookieKey:
-            db.Delete(db.Key(self.kindName, self.cookieKey))
+            if not conf["viur.instance.is_dev_server"]:
+                memcache_client.delete(self.cookieKey)
+            else:
+                db.Delete(db.Key(self.kindName, self.cookieKey))
 
         self.cookieKey = utils.generateRandomString(42)
         self.staticSecurityKey = utils.generateRandomString(13)
@@ -232,14 +243,20 @@ class Session:
                 dbSession["securityKey"] = utils.generateRandomString(13)
                 db.Put(dbSession)
                 return dbSession["securityKey"]
-
+            #fixme why we store the session twice
             try:
-                newSkey = db.RunInTransaction(exchangeSecurityKey)
+                if not conf["viur.instance.is_dev_server"] and conf["viur.session.from_memcache"]:
+                    session_data = memcache_client.get(self.cookieKey)
+                    session_data["securityKey"] = utils.generateRandomString(13)
+                    memcache_client.set(self.cookieKey, session_data)
+                    new_skey = session_data["securityKey"]
+                else:
+                    new_skey = db.RunInTransaction(exchangeSecurityKey)
             except:  # This should be transaction collision
                 return False
-            if not newSkey:
+            if not new_skey:
                 return False
-            self.securityKey = newSkey
+            self.securityKey = new_skey
             self.changed = True
             return True
         return False
@@ -249,6 +266,13 @@ class Session:
         Checks if key matches the current *static* CSRF-Token of our session.
         """
         return hmac.compare_digest(self.staticSecurityKey, key)
+
+    def load_session_data(self, cookie):
+        if not conf["viur.instance.is_dev_server"] and conf["viur.session.from_memcache"]:
+            # We are in google appengine we can try to get the data form memcache
+            return memcache_client.get(cookie)
+        else:
+            return db.Get(db.Key(self.kindName, cookie))  # Loaded successfully
 
 
 @tasks.CallDeferred
