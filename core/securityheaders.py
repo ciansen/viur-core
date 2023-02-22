@@ -109,6 +109,11 @@ def _rebuildCspHeaderCache():
         if not enforceMode in conf["viur.security.contentSecurityPolicy"]:
             continue
         for key, values in conf["viur.security.contentSecurityPolicy"][enforceMode].items():
+
+            if conf["viur.instance.is_dev_server"] and key == "upgrade-insecure-requests":
+                # if we run locally we should not upgrade to HTTPS
+                # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Content-Security-Policy/upgrade-insecure-requests
+                continue
             resStr += key
             for value in values:
                 resStr += " "
