@@ -289,7 +289,12 @@ def setup(modules: Union[object, ModuleType], render: Union[ModuleType, Dict] = 
             db.Put(obj)
 
         conf["viur.file.hmacKey"] = bytes(obj["hmacKey"], "utf-8")
-    return app
+
+    # appengine api wrapper, needed for image api etc.
+    import google.appengine.api
+    gae_app = google.appengine.api.wrap_wsgi_app(app)
+
+    return gae_app
 
 
 def app(environ: dict, start_response: Callable):

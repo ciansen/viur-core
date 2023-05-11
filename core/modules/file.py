@@ -5,6 +5,7 @@ import json
 import logging
 import string
 import html
+import requests as _requests
 from PIL import Image, ImageCms
 from base64 import urlsafe_b64decode
 from datetime import datetime, timedelta
@@ -22,6 +23,7 @@ from viur.core.prototypes.tree import SkelType, Tree, TreeSkel
 from viur.core.skeleton import SkeletonInstance, skeletonByKind
 from viur.core.tasks import PeriodicTask, CallDeferred
 from viur.core.utils import sanitizeFileName
+from google.appengine.api import images
 
 credentials, project = google.auth.default()
 client = storage.Client(project, credentials)
@@ -317,6 +319,12 @@ class FileBaseSkel(TreeSkel):
         visible=False
     )
 
+    serving_url = StringBone(
+        descr = "Serving-URL",
+        readOnly = True,
+        visible = False
+    )
+
     derived = BaseBone(
         descr="Derived Files",
         readOnly=True,
@@ -346,7 +354,6 @@ class FileBaseSkel(TreeSkel):
                 if not skelValues["downloadUrl"]:
                     skelValues["downloadUrl"] = importData
                 skelValues["pendingparententry"] = False
-
 
 class FileNodeSkel(TreeSkel):
     """
@@ -648,6 +655,86 @@ class File(Tree):
             raise errors.Redirect(signedUrl)
 
     @exposed
+    def serving(self,
+                key,
+                size = None,
+                filename = None,  # random string with .ext
+                options = "",
+                download = None,  # 1 = True, else False
+                ):
+        """
+
+        :param key: a string with one __ seperator. The first part is the hostprefix, second part is the key
+        :param size: the target image size, take a look at the valid_sizes
+        :param filename: a random string with an extention, valid extentions are jpg,png,webp
+        :param options: - seperated options:
+            c - crop
+            p - face crop
+            fv - vertrical flip
+            fh - horizontal flip
+            rXXX - rotate 90, 180, 270
+            nu - no upscale
+        :param download: if value = 1 force download, else not
+        :return:
+        """
+
+        valid_parameters = ["c", "p", "fv", "fh", "r90", "r180", "r270", "nu"]
+        valid_sizes = [32, 48, 64, 72, 80, 90, 94, 104, 110, 120, 128, 144,
+                       150, 160, 200, 220, 288, 320, 400, 512, 576,
+                       640, 720, 800, 912, 1024, 1152, 1280, 1440, 1600]
+        valid_formats = {
+            "jpg" : "rj",
+            "png" : "rp",
+            "webp": "rw",
+        }
+
+        host, value = key.split("__")
+
+        if any(c not in conf["viur.searchValidChars"] for c in host):
+            raise errors.BadRequest("key contains invalid characters")
+
+        # extract format from filename
+        fileformat = "webp"
+        if filename:
+            _format = filename.split(".")
+            _format.reverse()
+            _format = _format[0]
+            if _format in ["png", "jpg", "webp"]:
+                fileformat = _format
+
+        url = f"https://{host}.googleusercontent.com/{value}"
+
+        if options:
+            single_parameters = options.split("-")
+
+            if not all(param in valid_parameters for param in single_parameters):
+                raise errors.BadRequest("Invalid Options")
+
+        options += f"-{valid_formats[fileformat]}"
+
+        if size and int(size) in valid_sizes:
+            options = f"s{size}-" + options
+
+        url += "=" + options
+
+        try:
+            response = current.request.get().response
+            response.headers["Content-Type"] = f"image/{fileformat}"
+            response.headers[
+                "Cache-Control"] = "public, max-age=604800"  # 7 Days
+            if download and download == "1":
+                response.headers[
+                    "Content-Disposition"] = "attachment; filename=%s" % filename
+            else:
+                response.headers[
+                    "Content-Disposition"] = "filename=%s" % filename
+
+            return _requests.get(url).content
+        except:
+            raise errors.BadRequest("Invalid Url")
+
+
+    @exposed
     @forceSSL
     @forcePost
     def add(self, skelType: SkelType, node=None, *args, **kwargs):
@@ -693,6 +780,20 @@ class File(Tree):
             skel.toDB()
             # Add updated download-URL as the auto-generated isn't valid yet
             skel["downloadUrl"] = utils.downloadUrlFor(skel["dlkey"], skel["name"], derived=False)
+
+            if skel["mimetype"].startswith("image/") \
+                and not skel["serving_url"]:
+                try:
+                    skel["serving_url"] = images.get_serving_url(
+                        None,
+                        secure_url = True,
+                        filename = f"/gs/{bucket.name}/{skel['dlkey']}/source/{skel['filename']}"
+                    )
+                except Exception as e:
+
+                    logging.warning("Error while creating serving url")
+                    logging.exception(e)
+
             return self.render.addSuccess(skel)
         return super(File, self).add(skelType, node, *args, **kwargs)
 
@@ -700,6 +801,19 @@ class File(Tree):
         super().onEdit(skelType, skel)
         old_skel = self.editSkel(skelType)
         old_skel.setEntity(skel.dbEntity)
+
+        if skel["mimetype"].startswith("image/") \
+            and not skel["serving_url"]:
+            try:
+                skel["serving_url"] = images.get_serving_url(
+                    None,
+                    secure_url = True,
+                    filename = f"/gs/{bucket.name}/{skel['dlkey']}/source/{skel['filename']}"
+                )
+            except Exception as e:
+
+                logging.warning("Error while creating serving url")
+                logging.exception(e)
 
         if old_skel["name"] == skel["name"]:  # name not changed we can return
             return
