@@ -114,6 +114,13 @@ ViUR on Linux
 
 9. Open http://localhost:8080 and http://localhost:8080/vi to check if the front and backend of your system is working.
 
+10. After your first deployment open the https://appspot.com
+11. Visit the `IAM & Admin <https://console.cloud.google.com/iam-admin/iam?>`_ and press the "+ GRANT ACCESS" Button
+12. Select the User: "projectname@appspot.gserviceaccount.com"
+13. Assign following Roles:
+  (a) Cloud Datastore User
+  (b) Storage Object Admin
+
 Reset my Admin User:
 ____________________
 In the Case you have locked yourself out of your own system. There is a possible way back in bu you will need to sacrifice all your User Data.

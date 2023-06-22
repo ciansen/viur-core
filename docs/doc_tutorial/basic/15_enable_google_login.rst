@@ -37,4 +37,4 @@ This changes took effect on ViUR 3.3.5 if you are Using a Version prior to this 
     # Insert your ClientID as String
     conf["viur.user.google.clientID"] = " "
     # If you are a gsuitecustomer, you can whitelist mails form certain Domains
-    conf["viur.user.google.gsuiteDomains"] = ["viur.de"]
+    conf["viur.user.google.gsuiteDomains"] = ["viur.com"]
