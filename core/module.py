@@ -1,4 +1,5 @@
 from typing import Dict, Any, Union, Callable
+import inspect
 
 
 class Module:
@@ -118,6 +119,39 @@ class Module:
             "name": self.__class__.__name__,
             "handler": ".".join((handler, self.__class__.__name__.lower())),
         }
+
+        func = inspect.getmembers(self, predicate = inspect.ismethod)
+        filtered_funcs = []
+        for fn in func:
+            if not fn:
+                continue
+            
+            f = fn[1]
+            is_exposed = False
+            try:
+                is_exposed = f.exposed
+            except AttributeError:
+                is_exposed = False
+
+            if is_exposed:
+                _params = {}
+                signature = inspect.signature(f)
+                for parameter in signature.parameters.values():
+                    _params[parameter.name] = {
+                        "type": "-" if type(parameter.annotation) is inspect.Parameter.empty else str(parameter.annotation),
+                        "default": None,
+                    }
+
+                    if parameter.default is not inspect.Parameter.empty:
+                       _params[parameter.name]["default"] = str(parameter.default)
+
+                filtered_funcs.append({
+                    "name": f.__name__,
+                    "docs": f.__doc__,
+                    "args": _params
+                })
+
+        ret["functions"] = filtered_funcs
 
         # Extend indexes, if available
         if indexes := getattr(self, "indexes", None):
